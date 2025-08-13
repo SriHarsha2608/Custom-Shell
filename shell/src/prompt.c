@@ -28,4 +28,5 @@ void display_prompt()
     {
         printf("%s@%s:%s> ", username, hostname, cwd);
     }
+    fflush(stdout);
 }
