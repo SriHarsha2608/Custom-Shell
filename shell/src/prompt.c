@@ -23,7 +23,7 @@ void display_prompt()
     if (strstr(cwd, shell_home) == cwd)
     {
         printf("%s@%s:~%s> ", username, hostname, cwd + strlen(shell_home));
-    }
+    } 
     else
     {
         printf("%s@%s:%s> ", username, hostname, cwd);

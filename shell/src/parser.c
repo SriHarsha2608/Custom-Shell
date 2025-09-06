@@ -1,112 +1,106 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
+#include "tokenizer.h"
 #include "parser.h"
 
-enum tokenType { 
-    NAME, 
-    OP, 
-    END, 
-    INVALID 
-};
+token *tokens;
+int pos;
 
-char *skipSpaces(char *s)
+token *current()
 {
-    while (*s && isspace((unsigned char)*s))
-    {
-        s++;
-    }
-    return s;
+    return &tokens[pos];
 }
 
-int isOperator(char c)
+void advance()
 {
-    return (c == '|' || c == '&' || c == ';' || c == '<' || c == '>');
-}
-
-enum tokenType nextToken(char **p, char *buffer, size_t bufferLen)
-{
-    char *s = skipSpaces(*p);
-
-    if (*s == '\0') 
+    if (tokens[pos].type != T_END)
     {
-        *p = s;
-        return END; 
-    }
-
-    if (isOperator(*s))
-    {
-        size_t len = 1;
-        buffer[0] = *s;
-        buffer[1] = '\0';
-
-        if (*s == '>' && *(s+1) == '>')
-        {
-            buffer[1] = '>';
-            buffer[2] = '\0';
-            len = 2;
-        }
-        *p = s + len;
-        return OP;
-    }
-    else
-    {
-        size_t i = 0;
-        while (*s && !isOperator(*s) && !isspace((unsigned char)*s))
-        {
-            if (i+1 < bufferLen)
-            {
-                buffer[i] = *s;
-                i++;
-            }
-            s++;
-        }
-        buffer[i] = '\0';
-        *p = s;
-        if (i > 0)
-        {
-            return NAME;
-        }
-        else
-        {
-            return INVALID;
-        }
-    }
-}
-
-int parseCommand(char *input)
-{
-    char *p = input;
-    char token[256];
-    enum tokenType last = OP;
-
-    while (1)
-    {
-        enum tokenType t = nextToken(&p, token, sizeof(token));
-        if (t == END)
-        {
-            break;
-        }
-        if (t == INVALID)
-        {
-            printf("Invalid Syntax!\n");
-            return -1;
-        }
-        
-        if (last == OP && t == OP)
-        {
-            printf("Invalid Syntax!\n");
-            return -1;
-        }
-        last = t;
-    }
-
-    if (last == OP)
-    {
-        printf("Invalid Syntax!\n");
-        return -1;
+        pos++;
     }
     
-    return 0;
+}
+
+int parse_atomic();
+int parse_cmd_group();
+int parse_shell_cmd();
+
+int parse(token *toks)
+{
+    tokens = toks;
+    pos = 0;
+    int ok = parse_shell_cmd();
+    return ok && current()->type == T_END;
+}
+
+int parse_shell_cmd()
+{
+    if (!parse_cmd_group())
+    {
+        return 0;
+    }
+    while (current()->type == T_AND || current()->type == T_SEMI)
+    {
+        tokenType t = current()->type;
+        advance();
+
+        if (t == T_SEMI || (t == T_AND && current()->type != T_END))
+        {
+            if (!parse_cmd_group())
+            {
+                return 0;
+            }
+        }
+    }
+    if (current()->type == T_AND)
+    {
+        advance();
+    }
+    
+    return 1;
+}
+
+int parse_cmd_group()
+{
+    if (!parse_atomic())
+    {
+        return 0;
+    }
+    while (current()->type == T_PIPE)
+    {
+        advance();
+        if (!parse_atomic())
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int parse_atomic()
+{
+    if (current()->type != T_NAME)
+    {
+        return 0;
+    }
+    advance();
+
+    while (current()->type == T_NAME || current()->type == T_INPUT || current()->type == T_OUTPUT || current()->type == T_APPEND)
+    {
+        // advance();
+        if (current()->type == T_NAME)
+        {
+            advance();
+        }
+        else if (current()->type == T_INPUT || current()->type == T_OUTPUT || current()->type == T_APPEND)
+        {
+            advance();
+            if (current()->type != T_NAME)
+            {
+                return 0;
+            }
+            advance();
+        }
+        
+    }
+    
+    return 1;
 }

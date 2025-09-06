@@ -1,6 +1,8 @@
 #ifndef PARSER_H
 #define PARSER_H
 
-int parseCommand(char *input);
+#include "tokenizer.h" 
+
+int parse(token *tokens);
 
 #endif
