@@ -6,6 +6,7 @@
 #include "parser.h"
 #include "tokenizer.h"
 #include "hop.h"
+#include "reveal.h"
 
 char shell_home[1024];
 
@@ -38,6 +39,19 @@ int main()
                 argv[argc++] = tokens[i].value;
             }
             doHop(argc, argv);
+        }
+        else if (strcmp(tokens[0].value, "reveal") == 0)
+        {
+            int argc = 0;
+            char *argv[32];
+            for (int i = 0; i < count && tokens[i].type != T_END; i++)
+            {
+                if (tokens[i].type == T_NAME)
+                {
+                    argv[argc++] = tokens[i].value;
+                }
+            }
+            doReveal(argc, argv);
         }
     }
     return 0;
