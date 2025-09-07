@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -Wall -Iinclude
-SRC = src/main.c src/prompt.c src/input.c src/parser.c src/tokenizer.c
+SRC = src/main.c src/prompt.c src/input.c src/parser.c src/tokenizer.c src/hop.c
 OBJ = $(SRC:.c=.o)
 TARGET = shell
 

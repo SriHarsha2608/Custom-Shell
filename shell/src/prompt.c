@@ -19,14 +19,28 @@ void display_prompt()
     getcwd(cwd, sizeof(cwd));
 
     // char *home = getenv("HOME");
+    char displayPath[1024];
 
-    if (strstr(cwd, shell_home) == cwd)
+    size_t homeLen = strlen(shell_home);
+
+    if (strncmp(cwd, shell_home, homeLen) == 0) 
     {
-        printf("%s@%s:~%s> ", username, hostname, cwd + strlen(shell_home));
-    } 
-    else
-    {
-        printf("%s@%s:%s> ", username, hostname, cwd);
+        if (cwd[homeLen] == '\0') 
+        {
+            snprintf(displayPath, sizeof(displayPath), "~");
+        } 
+        else if (cwd[homeLen] == '/') 
+        {
+            snprintf(displayPath, sizeof(displayPath), "~%s", cwd + homeLen);
+        } 
+        else 
+        {
+            snprintf(displayPath, sizeof(displayPath), "%s", cwd);
+        }
+    } else {
+        snprintf(displayPath, sizeof(displayPath), "%s", cwd);
     }
+
+    printf("<%s@%s:%s> ", username, hostname, displayPath);
     fflush(stdout);
 }
