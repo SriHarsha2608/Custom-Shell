@@ -1,5 +1,5 @@
-#ifndef HOP_H
-#define HOP_H
+#ifndef REVEAL_H
+#define REVEAL_H
 
 void doReveal(int argc, char **argv);
 

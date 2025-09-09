@@ -1,6 +1,15 @@
+// #ifndef INPUT_H
+// #define INPUT_H
+// #include <unistd.h>
+
+// ssize_t userInput(char *buffer, int size);
+
+// #endif
+
 #ifndef INPUT_H
 #define INPUT_H
-#include <unistd.h>
+
+#include <sys/types.h>
 
 ssize_t userInput(char *buffer, int size);
 
