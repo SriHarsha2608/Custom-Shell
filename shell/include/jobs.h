@@ -34,5 +34,7 @@ Job* findJob(int job_id);
 Job* findJobByPid(pid_t pid);
 int getLastJobId(void);
 
+// E.1: activities command
+void doActivities(void);
 
 #endif

@@ -140,8 +140,52 @@ void checkBackgroundJobs(void) {
     }
 }
 
+// Compare function for qsort - sorts jobs by command name
+static int compareJobsByCommand(const void *a, const void *b) {
+    const Job *jobA = (const Job*)a;
+    const Job *jobB = (const Job*)b;
+    
+    char *cmdA = extractCommandName(jobA->command);
+    char *cmdB = extractCommandName(jobB->command);
+    
+    return strcmp(cmdA, cmdB);
+}
 
-
-
-
+// E.1: activities command
+void doActivities(void) {
+    Job active_jobs[MAX_JOBS];
+    int active_count = 0;
+    
+    // First, update job states by checking which processes are still alive
+    for (int i = 0; i < MAX_JOBS; i++) {
+        if (jobs[i].active && jobs[i].state == JOB_RUNNING) {
+            // Check if process is still running using kill with signal 0
+            if (kill(jobs[i].pid, 0) == -1) {
+                // Process no longer exists, but don't remove it yet - just mark as done
+                jobs[i].state = JOB_DONE;
+            }
+        }
+    }
+    
+    // Collect active jobs that are running or stopped (not done)
+    for (int i = 0; i < MAX_JOBS; i++) {
+        if (jobs[i].active && (jobs[i].state == JOB_RUNNING || jobs[i].state == JOB_STOPPED)) {
+            active_jobs[active_count++] = jobs[i];
+        }
+    }
+    
+    if (active_count == 0) {
+        return; // No active jobs - print nothing
+    }
+    
+    // Sort lexicographically by command name
+    qsort(active_jobs, active_count, sizeof(Job), compareJobsByCommand);
+    
+    // Print jobs in the required format
+    for (int i = 0; i < active_count; i++) {
+        char *cmd_name = extractCommandName(active_jobs[i].command);
+        char *state_str = (active_jobs[i].state == JOB_RUNNING) ? "Running" : "Stopped";
+        printf("[%d] : %s - %s\n", active_jobs[i].pid, cmd_name, state_str);
+    }
+}
 
