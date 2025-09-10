@@ -14,12 +14,14 @@
 #include "reveal.h"
 #include "log.h"
 #include "jobs.h"
+#include "ping.h"
 
 int is_builtin(char *command) {
     return (strcmp(command, "hop") == 0 || 
             strcmp(command, "reveal") == 0 ||
             strcmp(command, "log") == 0 ||
-            strcmp(command, "activities") == 0);
+            strcmp(command, "activities") == 0 ||
+            strcmp(command, "ping") == 0);
 }
 
 void execute_builtin(char *command, char **args, int argc) {
@@ -31,6 +33,8 @@ void execute_builtin(char *command, char **args, int argc) {
         doLog(argc, args);
     } else if (strcmp(command, "activities") == 0) {
         doActivities();
+    } else if (strcmp(command, "ping") == 0) {
+        doPing(argc, args);
     }
 }
 
