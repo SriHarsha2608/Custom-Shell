@@ -7,6 +7,7 @@
 void initLog(void);
 void addToLog(char *command);
 void doLog(int argc, char **argv);
+void cleanupLog(void);
 int containsLogCommand(char *command);
 
 #endif

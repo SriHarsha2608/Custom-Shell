@@ -1,16 +1,21 @@
+#define _POSIX_C_SOURCE 200809L
+#define _XOPEN_SOURCE 700
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
 #include <limits.h>
 #include "hop.h"
 
-char shellHome[PATH_MAX];
 char prevDir[PATH_MAX];
 int prevValid = 0;
 
 void initHop()
 {
-    getcwd(shellHome, sizeof(shellHome));
+    if (getcwd(shell_home, sizeof(shell_home)) == NULL) {  // Changed from shellHome
+        perror("getcwd");
+        exit(EXIT_FAILURE);
+    }
     prevValid = 0;
 }
 
@@ -19,10 +24,14 @@ void doHop(int argc, char **argv)
     char cwd[PATH_MAX];
     if (argc == 1)
     {
-        getcwd(cwd, sizeof(cwd));
-        if (chdir(shellHome) == 0)
+        if (getcwd(cwd, sizeof(cwd)) == NULL) {
+            perror("getcwd");
+            return;
+        }
+        if (chdir(shell_home) == 0)  // Changed from shellHome
         {
-            strcpy(prevDir, cwd);
+            strncpy(prevDir, cwd, sizeof(prevDir) - 1);
+            prevDir[sizeof(prevDir) - 1] = '\0';
             prevValid = 1;
         }
         return;
@@ -34,12 +43,16 @@ void doHop(int argc, char **argv)
 
         if (strcmp(arg, "~") == 0)
         {
-            getcwd(cwd, sizeof(cwd));
-            if (chdir(shellHome) == 0)
+            if (getcwd(cwd, sizeof(cwd)) == NULL) {
+                perror("getcwd");
+                continue;
+            }
+            if (chdir(shell_home) == 0)  // Changed from shellHome
             {
-                strcpy(prevDir, cwd);
+                strncpy(prevDir, cwd, sizeof(prevDir) - 1);
+                prevDir[sizeof(prevDir) - 1] = '\0';
                 prevValid = 1;
-            }   
+            }
         }
         else if (strcmp(arg, ".") == 0)
         {
@@ -48,15 +61,19 @@ void doHop(int argc, char **argv)
         
         else if (strcmp(arg, "..") == 0)
         {
-            getcwd(cwd, sizeof(cwd));
-            if (strcmp(cwd, shellHome) == 0)
+            if (getcwd(cwd, sizeof(cwd)) == NULL) {
+                perror("getcwd");
+                continue;
+            }
+            if (strcmp(cwd, shell_home) == 0)  // Changed from shellHome
             {
                 continue;
             }
             
             if (chdir("..") == 0)
             {
-                strcpy(prevDir, cwd);
+                strncpy(prevDir, cwd, sizeof(prevDir) - 1);
+                prevDir[sizeof(prevDir) - 1] = '\0';
                 prevValid = 1;
             }
             
@@ -65,39 +82,38 @@ void doHop(int argc, char **argv)
         {
             if (prevValid)
             {
-                getcwd(cwd, sizeof(cwd));
+                if (getcwd(cwd, sizeof(cwd)) == NULL) {
+                    perror("getcwd");
+                    continue;
+                }
                 char tempDir[PATH_MAX];
-                strcpy(tempDir, prevDir);
+                strncpy(tempDir, prevDir, sizeof(tempDir) - 1);
+                tempDir[sizeof(tempDir) - 1] = '\0';
                 if (chdir(prevDir) == 0)
                 {
-                    strcpy(prevDir, cwd); 
+                    strncpy(prevDir, cwd, sizeof(prevDir) - 1);
+                    prevDir[sizeof(prevDir) - 1] = '\0';
                 }
             }
             
         }
         else
         {
-            getcwd(cwd, sizeof(cwd));
+            if (getcwd(cwd, sizeof(cwd)) == NULL) {
+                perror("getcwd");
+                continue;
+            }
             if (chdir(arg) == 0)
             {
-                strcpy(prevDir, cwd);
+                strncpy(prevDir, cwd, sizeof(prevDir) - 1);
+                prevDir[sizeof(prevDir) - 1] = '\0';
                 prevValid = 1;
             }
             else
             {
                 printf("No such directory!\n");
                 fflush(stdout);
-                // break;
             }
         }
-
-        // if (prevValid)
-        // {
-        //     getcwd(cwd, sizeof(cwd));
-        //     strcpy(prevDir, cwd);
-        // }
-        
-        
     }
-    
 }

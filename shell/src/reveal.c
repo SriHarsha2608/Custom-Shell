@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+#define _XOPEN_SOURCE 700
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,10 +9,7 @@
 #include <limits.h>
 #include <errno.h>
 #include "reveal.h"
-
-extern char shellHome[];
-extern char prevDir[];
-extern int prevValid;
+#include "hop.h"  // Add this include
 
 int compareStrings(const void *a, const void *b)
 {
@@ -92,7 +91,7 @@ void doReveal(int argc, char **argv)
 
             if (strcmp(argv[argIndex], "~") == 0)
             {
-                strcpy(targetDir, shellHome);
+                strcpy(targetDir, shell_home);  // Changed from shellHome
             }
             else if (strcmp(argv[argIndex], ".") == 0)
             {
@@ -100,7 +99,7 @@ void doReveal(int argc, char **argv)
             }
             else if (strcmp(argv[argIndex], "..") == 0)
             {
-                if (strcmp(currentDir, shellHome) == 0)
+                if (strcmp(currentDir, shell_home) == 0)  // Changed from shellHome
                 {
                     strcpy(targetDir, currentDir);
                 }
@@ -208,7 +207,8 @@ void doReveal(int argc, char **argv)
             perror("malloc");
             return;
         }
-        strcpy(fileNames[fileCount], entry->d_name);
+        strncpy(fileNames[fileCount], entry->d_name, nameLen);
+        fileNames[fileCount][nameLen] = '\0';
         fileCount++;
     }
 

@@ -1,27 +1,10 @@
-// #include <stdio.h>
-// #include <string.h>
-// #include <unistd.h>
-// #include "input.h"
-
-// ssize_t userInput(char *buffer, int size)
-// {
-//     ssize_t len = read(STDIN_FILENO, buffer, size - 1);
-//     if (len > 0) 
-//     {
-//         buffer[len - 1] = '\0';
-//     } 
-//     else if (len == 0) 
-//     {
-//         buffer[0] = '\0'; 
-//     }
-//     return len;
-// }
-
+#define _POSIX_C_SOURCE 200809L
+#define _XOPEN_SOURCE 700
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <signal.h> 
+#include <signal.h>
 #include <errno.h>
 #include "input.h"
 #include "jobs.h"
@@ -30,28 +13,26 @@ extern volatile sig_atomic_t child_exited;
 
 ssize_t userInput(char *buffer, int size) {
     while (1) {
-        // Check for completed background jobs before reading input
-        if (child_exited) {
-            checkBackgroundJobs();
-            child_exited = 0;
-        }
-        
         ssize_t len = read(STDIN_FILENO, buffer, size - 1);
         
         if (len > 0) {
-            buffer[len - 1] = '\0';
+            // Null terminate
+            buffer[len] = '\0';
+            
+            // Remove trailing newline and whitespace
+            while (len > 0 && (buffer[len-1] == '\n' || buffer[len-1] == '\r' || 
+                              buffer[len-1] == ' ' || buffer[len-1] == '\t')) {
+                buffer[--len] = '\0';
+            }
+            
             return len;
         } else if (len == 0) {
             buffer[0] = '\0';
             return len;
         } else if (errno == EINTR) {
             // System call was interrupted by signal (SIGCHLD)
-            // Check for completed jobs and continue reading
-            if (child_exited) {
-                checkBackgroundJobs();
-                child_exited = 0;
-            }
-            continue; // Retry the read
+            // Just continue reading - job checking will happen in main loop
+            continue;
         } else {
             // Other error
             perror("read");

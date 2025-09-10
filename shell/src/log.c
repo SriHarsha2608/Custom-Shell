@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+#define _XOPEN_SOURCE 700
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,98 +14,107 @@ extern char shell_home[];
 
 static char log_entries[MAX_LOG_ENTRIES][MAX_COMMAND_LENGTH];
 static int log_count = 0;
-static int log_start = 0;  // Index of the oldest entry in circular buffer
 static char log_file_path[1024];
 
 void initLog(void) {
+    // ALWAYS reset counters first
+    log_count = 0;
+    
     // Create log file path in shell home directory
     snprintf(log_file_path, sizeof(log_file_path), "%s/.shell_log", shell_home);
     
-    // Initialize log arrays
+    // Initialize log arrays - clear everything
     for (int i = 0; i < MAX_LOG_ENTRIES; i++) {
         log_entries[i][0] = '\0';
     }
     
-    // Load log from file
-    FILE *file = fopen(log_file_path, "r");
+    // Start fresh each session - clear any existing log file
+    FILE *file = fopen(log_file_path, "w");
     if (file != NULL) {
-        char line[MAX_COMMAND_LENGTH];
-        while (fgets(line, sizeof(line), file) != NULL && log_count < MAX_LOG_ENTRIES) {
-            // Remove newline
-            line[strcspn(line, "\n")] = '\0';
-            if (strlen(line) > 0) {
-                strcpy(log_entries[log_count], line);
-                log_count++;
-            }
-        }
-        fclose(file);
+        fclose(file); // Create empty file
     }
+    
+    // Log starts completely fresh for this session
 }
 
 void saveLogToFile(void) {
     FILE *file = fopen(log_file_path, "w");
     if (file != NULL) {
-        // Write entries in chronological order (oldest to newest)
+        // Simple linear write - no complex circular buffer logic
         for (int i = 0; i < log_count; i++) {
-            int index = (log_start + i) % MAX_LOG_ENTRIES;
-            fprintf(file, "%s\n", log_entries[index]);
+            fprintf(file, "%s\n", log_entries[i]);
         }
+        fflush(file);  // Force write to disk
         fclose(file);
     }
 }
 
 int containsLogCommand(char *command) {
-    // Tokenize the command to check if any atomic command is "log"
-    token tokens[256];
-    int count;
-    tokenize(command, tokens, &count);
-    
-    for (int i = 0; i < count; i++) {
-        if (tokens[i].type == T_NAME && strcmp(tokens[i].value, "log") == 0) {
-            return 1;
-        }
-    }
-    return 0;
+    // Simple check - just look for "log" at the beginning
+    return (strncmp(command, "log", 3) == 0 && (command[3] == ' ' || command[3] == '\0'));
 }
 
 void addToLog(char *command) {
-    // Don't store if command contains log
+    // Skip null or empty commands
+    if (command == NULL || strlen(command) == 0) {
+        return;
+    }
+    
+    // Don't store log commands
     if (containsLogCommand(command)) {
         return;
     }
     
     // Don't store if identical to last command
-    if (log_count > 0) {
-        int last_index = (log_start + log_count - 1) % MAX_LOG_ENTRIES;
-        if (strcmp(log_entries[last_index], command) == 0) {
-            return;
+    if (log_count > 0 && strcmp(log_entries[log_count - 1], command) == 0) {
+        return;
+    }
+    
+    // If buffer is full, shift everything left (remove oldest)
+    if (log_count >= MAX_LOG_ENTRIES) {
+        for (int i = 0; i < MAX_LOG_ENTRIES - 1; i++) {
+            strcpy(log_entries[i], log_entries[i + 1]);
         }
+        log_count = MAX_LOG_ENTRIES - 1;
     }
     
-    if (log_count < MAX_LOG_ENTRIES) {
-        // Still have space
-        strcpy(log_entries[log_count], command);
-        log_count++;
-    } else {
-        // Buffer is full, overwrite oldest
-        strcpy(log_entries[log_start], command);
-        log_start = (log_start + 1) % MAX_LOG_ENTRIES;
-    }
+    // Add new command at the end
+    strncpy(log_entries[log_count], command, MAX_COMMAND_LENGTH - 1);
+    log_entries[log_count][MAX_COMMAND_LENGTH - 1] = '\0';
+    log_count++;
     
+    // Save immediately after each addition
     saveLogToFile();
+}
+
+void cleanupLog(void) {
+    // Optional: Clear log file when shell exits
+    FILE *file = fopen(log_file_path, "w");
+    if (file != NULL) {
+        fclose(file); // Create empty file
+    }
+    
+    // Clear in-memory log
+    log_count = 0;
+    for (int i = 0; i < MAX_LOG_ENTRIES; i++) {
+        log_entries[i][0] = '\0';
+    }
 }
 
 void doLog(int argc, char **argv) {
     if (argc == 1) {
-        // No arguments - print all commands (oldest to newest)
-        for (int i = 0; i < log_count; i++) {
-            int index = (log_start + i) % MAX_LOG_ENTRIES;
-            printf("%s\n", log_entries[index]);
+        // No arguments - print all commands (newest to oldest)
+        if (log_count == 0) {
+            return; // No output if no commands
+        }
+        
+        // Print from most recent to oldest
+        for (int i = log_count - 1; i >= 0; i--) {
+            printf("%s\n", log_entries[i]);
         }
     } else if (argc == 2 && strcmp(argv[1], "purge") == 0) {
         // Clear history
         log_count = 0;
-        log_start = 0;
         for (int i = 0; i < MAX_LOG_ENTRIES; i++) {
             log_entries[i][0] = '\0';
         }
@@ -120,10 +131,11 @@ void doLog(int argc, char **argv) {
             return;
         }
         
-        // Convert to our internal indexing (newest to oldest)
-        int actual_index = (log_start + log_count - index_input) % MAX_LOG_ENTRIES;
+        // Convert to array index (newest to oldest)
+        int actual_index = log_count - index_input;
         char command_to_execute[MAX_COMMAND_LENGTH];
-        strcpy(command_to_execute, log_entries[actual_index]);
+        strncpy(command_to_execute, log_entries[actual_index], MAX_COMMAND_LENGTH - 1);
+        command_to_execute[MAX_COMMAND_LENGTH - 1] = '\0';
         
         // Parse and execute the command
         token tokens[256];
@@ -131,17 +143,7 @@ void doLog(int argc, char **argv) {
         tokenize(command_to_execute, tokens, &count);
         
         if (parse(tokens)) {
-            // Find the first command group (before ; or &)
-            int cmd_group_end = 0;
-            for (int i = 0; i < count && tokens[i].type != T_END; i++) {
-                if (tokens[i].type == T_SEMI || tokens[i].type == T_AND) {
-                    break;
-                }
-                cmd_group_end = i + 1;
-            }
-            
-            // Execute the first command group
-            execute_command_group(tokens, cmd_group_end);
+            execute_command_group(tokens, count);
         } else {
             printf("Invalid Syntax!\n");
         }

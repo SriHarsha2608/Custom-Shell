@@ -4,15 +4,16 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <signal.h>
+#include "tokenizer.h"
 #include "executor.h"
 #include "hop.h"
 #include "reveal.h"
 #include "log.h"
 #include "jobs.h"
-
-extern char shellHome[];
 
 int is_builtin(char *command) {
     return (strcmp(command, "hop") == 0 || 
@@ -32,21 +33,37 @@ void execute_builtin(char *command, char **args, int argc) {
 
 Pipeline parse_pipeline(token *tokens, int count) {
     Pipeline pipeline;
+    memset(&pipeline, 0, sizeof(Pipeline));
     pipeline.commands = NULL;
     pipeline.command_count = 0;
     
+    if (count <= 0) {
+        return pipeline;
+    }
+    
     int capacity = 4;
     pipeline.commands = malloc(capacity * sizeof(Command));
+    if (pipeline.commands == NULL) {
+        perror("malloc");
+        return pipeline;
+    }
     
     int i = 0;
     while (i < count && tokens[i].type != T_END) {
         // Resize if needed
         if (pipeline.command_count >= capacity) {
             capacity *= 2;
-            pipeline.commands = realloc(pipeline.commands, capacity * sizeof(Command));
+            Command *temp = realloc(pipeline.commands, capacity * sizeof(Command));
+            if (temp == NULL) {
+                free_pipeline(&pipeline);
+                perror("realloc");
+                return pipeline;
+            }
+            pipeline.commands = temp;
         }
         
         Command *cmd = &pipeline.commands[pipeline.command_count];
+        memset(cmd, 0, sizeof(Command));
         cmd->command = NULL;
         cmd->args = NULL;
         cmd->argc = 0;
@@ -57,6 +74,11 @@ Pipeline parse_pipeline(token *tokens, int count) {
         // Parse command and arguments
         int arg_capacity = 16;
         cmd->args = malloc(arg_capacity * sizeof(char*));
+        if (cmd->args == NULL) {
+            perror("malloc");
+            free_pipeline(&pipeline);
+            return pipeline;
+        }
         
         // First token should be the command name
         if (tokens[i].type == T_NAME) {
@@ -73,7 +95,13 @@ Pipeline parse_pipeline(token *tokens, int count) {
             if (tokens[i].type == T_NAME) {
                 if (cmd->argc >= arg_capacity - 1) {
                     arg_capacity *= 2;
-                    cmd->args = realloc(cmd->args, arg_capacity * sizeof(char*));
+                    char **temp = realloc(cmd->args, arg_capacity * sizeof(char*));
+                    if (temp == NULL) {
+                        perror("realloc");
+                        free_pipeline(&pipeline);
+                        return pipeline;
+                    }
+                    cmd->args = temp;
                 }
                 cmd->args[cmd->argc++] = strdup(tokens[i].value);
                 i++;
@@ -126,22 +154,30 @@ void setup_redirection(Command *cmd) {
             fprintf(stderr, "No such file or directory\n");
             exit(1);
         }
-        dup2(fd, STDIN_FILENO);
+        if (dup2(fd, STDIN_FILENO) == -1) {
+            perror("dup2");
+            close(fd);
+            exit(1);
+        }
         close(fd);
     }
     
     if (cmd->output_file) {
         int fd;
         if (cmd->append_output) {
-            fd = open(cmd->output_file, O_WRONLY | O_CREAT | O_APPEND, 0644);
+            fd = open(cmd->output_file, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
         } else {
-            fd = open(cmd->output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            fd = open(cmd->output_file, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
         }
         if (fd == -1) {
             fprintf(stderr, "No such file or directory\n");
             exit(1);
         }
-        dup2(fd, STDOUT_FILENO);
+        if (dup2(fd, STDOUT_FILENO) == -1) {
+            perror("dup2");
+            close(fd);
+            exit(1);
+        }
         close(fd);
     }
 }
@@ -159,7 +195,16 @@ void execute_pipeline(Pipeline *pipeline) {
             
             if (cmd->input_file || cmd->output_file) {
                 saved_stdin = dup(STDIN_FILENO);
+                if (saved_stdin == -1) {
+                    perror("dup");
+                    return;
+                }
                 saved_stdout = dup(STDOUT_FILENO);
+                if (saved_stdout == -1) {
+                    perror("dup");
+                    if (saved_stdin != -1) close(saved_stdin);
+                    return;
+                }
                 setup_redirection(cmd);
             }
             
@@ -183,7 +228,9 @@ void execute_pipeline(Pipeline *pipeline) {
                 exit(127);
             } else if (pid > 0) {
                 int status;
-                waitpid(pid, &status, 0);
+                if (waitpid(pid, &status, 0) == -1) {
+                    perror("waitpid");
+                }
             } else {
                 perror("fork");
             }
@@ -208,6 +255,15 @@ void execute_pipeline(Pipeline *pipeline) {
         Command *cmd = &pipeline->commands[i];
         
         pids[i] = fork();
+        if (pids[i] == -1) {
+            perror("fork");
+            // Clean up pipes and exit
+            for (int j = 0; j < pipeline->command_count - 1; j++) {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+            return;
+        }
         if (pids[i] == 0) {
             // Setup pipes
             if (i > 0) {
@@ -246,7 +302,9 @@ void execute_pipeline(Pipeline *pipeline) {
     for (int i = 0; i < pipeline->command_count; i++) {
         if (pids[i] > 0) {
             int status;
-            waitpid(pids[i], &status, 0);
+            if (waitpid(pids[i], &status, 0) == -1) {
+                perror("waitpid");
+            }
         }
     }
 }
@@ -254,23 +312,67 @@ void execute_pipeline(Pipeline *pipeline) {
 void execute_pipeline_background(Pipeline *pipeline, char *original_command) {
     if (pipeline->command_count == 0) return;
     
-    pid_t main_pid = fork();
-    if (main_pid == 0) {
-        // Child process - redirect stdin to /dev/null for background processes
-        int null_fd = open("/dev/null", O_RDONLY);
-        if (null_fd != -1) {
-            dup2(null_fd, STDIN_FILENO);
-            close(null_fd);
-        }
+    // For single commands, fork directly to avoid double-fork issue
+    if (pipeline->command_count == 1) {
+        Command *cmd = &pipeline->commands[0];
         
-        // Execute the pipeline normally
-        execute_pipeline(pipeline);
-        exit(0);
-    } else if (main_pid > 0) {
-        // Parent process - add to job list
-        addJob(main_pid, original_command);
+        pid_t pid = fork();
+        if (pid == 0) {
+            // Child process - redirect stdin to /dev/null for background processes
+            int null_fd = open("/dev/null", O_RDONLY);
+            if (null_fd == -1) {
+                perror("open /dev/null");
+                exit(EXIT_FAILURE);
+            }
+            if (dup2(null_fd, STDIN_FILENO) == -1) {
+                perror("dup2");
+                close(null_fd);
+                exit(EXIT_FAILURE);
+            }
+            close(null_fd);
+            
+            setup_redirection(cmd);
+            
+            if (is_builtin(cmd->command)) {
+                execute_builtin(cmd->command, cmd->args, cmd->argc);
+                exit(0);
+            } else {
+                execvp(cmd->command, cmd->args);
+                perror("execvp");
+                exit(127);
+            }
+        } else if (pid > 0) {
+            // Parent process - add to job list
+            addJob(pid, original_command);
+        } else {
+            perror("fork");
+        }
     } else {
-        perror("fork");
+        // For pipelines, use the original double-fork approach
+        pid_t main_pid = fork();
+        if (main_pid == 0) {
+            // Child process - redirect stdin to /dev/null for background processes
+            int null_fd = open("/dev/null", O_RDONLY);
+            if (null_fd == -1) {
+                perror("open /dev/null");
+                exit(EXIT_FAILURE);
+            }
+            if (dup2(null_fd, STDIN_FILENO) == -1) {
+                perror("dup2");
+                close(null_fd);
+                exit(EXIT_FAILURE);
+            }
+            close(null_fd);
+            
+            // Execute the pipeline normally
+            execute_pipeline(pipeline);
+            exit(0);
+        } else if (main_pid > 0) {
+            // Parent process - add to job list
+            addJob(main_pid, original_command);
+        } else {
+            perror("fork");
+        }
     }
 }
 

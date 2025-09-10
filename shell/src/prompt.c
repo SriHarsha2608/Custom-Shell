@@ -1,11 +1,12 @@
+#define _POSIX_C_SOURCE 200809L
+#define _XOPEN_SOURCE 700
 #include <stdio.h>
 #include <stdlib.h>
 #include <pwd.h>
 #include <string.h>
 #include <unistd.h>
 #include "prompt.h"
-
-extern char shell_home[];
+#include "hop.h"  // Add this include
 
 void display_prompt()
 {
@@ -13,12 +14,19 @@ void display_prompt()
     char cwd[1024];
 
     struct passwd *pw = getpwuid(getuid());
-    char *username = pw->pw_name;
+    char *username = pw ? pw->pw_name : "user";
     
-    gethostname(hostname, sizeof(hostname));
-    getcwd(cwd, sizeof(cwd));
+    if (gethostname(hostname, sizeof(hostname)) == -1) {
+        perror("gethostname");
+        strncpy(hostname, "unknown", sizeof(hostname) - 1);
+        hostname[sizeof(hostname) - 1] = '\0';
+    }
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        perror("getcwd");
+        strncpy(cwd, "unknown", sizeof(cwd) - 1);
+        cwd[sizeof(cwd) - 1] = '\0';
+    }
 
-    // char *home = getenv("HOME");
     char displayPath[1024];
 
     size_t homeLen = strlen(shell_home);
