@@ -8,6 +8,7 @@
 #include <errno.h>
 #include "input.h"
 #include "jobs.h"
+#include "signals.h"
 
 extern volatile sig_atomic_t child_exited;
 
@@ -27,6 +28,8 @@ ssize_t userInput(char *buffer, int size) {
             
             return len;
         } else if (len == 0) {
+            // EOF detected - set flag to indicate immediate exit needed
+            should_exit_on_eof = 1;
             buffer[0] = '\0';
             return len;
         } else if (errno == EINTR) {

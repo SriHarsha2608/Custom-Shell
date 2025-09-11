@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+#define _XOPEN_SOURCE 700
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,6 +10,8 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <signal.h>
+#include <termios.h>
+#include <time.h>
 #include "tokenizer.h"
 #include "executor.h"
 #include "hop.h"
@@ -15,13 +19,16 @@
 #include "log.h"
 #include "jobs.h"
 #include "ping.h"
+#include "signals.h"
 
 int is_builtin(char *command) {
     return (strcmp(command, "hop") == 0 || 
             strcmp(command, "reveal") == 0 ||
             strcmp(command, "log") == 0 ||
             strcmp(command, "activities") == 0 ||
-            strcmp(command, "ping") == 0);
+            strcmp(command, "ping") == 0 ||
+            strcmp(command, "fg") == 0 ||
+            strcmp(command, "bg") == 0);
 }
 
 void execute_builtin(char *command, char **args, int argc) {
@@ -35,6 +42,10 @@ void execute_builtin(char *command, char **args, int argc) {
         doActivities();
     } else if (strcmp(command, "ping") == 0) {
         doPing(argc, args);
+    } else if (strcmp(command, "fg") == 0) {
+        doFg(argc, args);
+    } else if (strcmp(command, "bg") == 0) {
+        doBg(argc, args);
     }
 }
 
@@ -158,7 +169,7 @@ void setup_redirection(Command *cmd) {
     if (cmd->input_file) {
         int fd = open(cmd->input_file, O_RDONLY);
         if (fd == -1) {
-            fprintf(stderr, "No such file or directory\n");
+            fprintf(stderr, "No such file or directory!\n");
             exit(1);
         }
         if (dup2(fd, STDIN_FILENO) == -1) {
@@ -177,7 +188,7 @@ void setup_redirection(Command *cmd) {
             fd = open(cmd->output_file, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
         }
         if (fd == -1) {
-            fprintf(stderr, "No such file or directory\n");
+            fprintf(stderr, "Unable to create file for writing\n");
             exit(1);
         }
         if (dup2(fd, STDOUT_FILENO) == -1) {
@@ -212,7 +223,49 @@ void execute_pipeline(Pipeline *pipeline) {
                     if (saved_stdin != -1) close(saved_stdin);
                     return;
                 }
-                setup_redirection(cmd);
+                
+                // Handle input redirection
+                if (cmd->input_file) {
+                    int fd = open(cmd->input_file, O_RDONLY);
+                    if (fd == -1) {
+                        fprintf(stderr, "No such file or directory!\n");
+                        if (saved_stdin != -1) close(saved_stdin);
+                        if (saved_stdout != -1) close(saved_stdout);
+                        return;
+                    }
+                    if (dup2(fd, STDIN_FILENO) == -1) {
+                        perror("dup2");
+                        close(fd);
+                        if (saved_stdin != -1) close(saved_stdin);
+                        if (saved_stdout != -1) close(saved_stdout);
+                        return;
+                    }
+                    close(fd);
+                }
+                
+                // Handle output redirection
+                if (cmd->output_file) {
+                    int fd;
+                    if (cmd->append_output) {
+                        fd = open(cmd->output_file, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+                    } else {
+                        fd = open(cmd->output_file, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+                    }
+                    if (fd == -1) {
+                        fprintf(stderr, "Unable to create file for writing\n");
+                        if (saved_stdin != -1) close(saved_stdin);
+                        if (saved_stdout != -1) close(saved_stdout);
+                        return;
+                    }
+                    if (dup2(fd, STDOUT_FILENO) == -1) {
+                        perror("dup2");
+                        close(fd);
+                        if (saved_stdin != -1) close(saved_stdin);
+                        if (saved_stdout != -1) close(saved_stdout);
+                        return;
+                    }
+                    close(fd);
+                }
             }
             
             execute_builtin(cmd->command, cmd->args, cmd->argc);
@@ -229,15 +282,60 @@ void execute_pipeline(Pipeline *pipeline) {
         } else {
             pid_t pid = fork();
             if (pid == 0) {
+                // Child: restore default handlers so job receives signals
+                signal(SIGINT, SIG_DFL);
+                signal(SIGTSTP, SIG_DFL);
+                // Create new process group for job control
+                setpgid(0, 0);
                 setup_redirection(cmd);
                 execvp(cmd->command, cmd->args);
-                perror("execvp");
+                fprintf(stderr, "Command not found!\n");
                 exit(127);
             } else if (pid > 0) {
+                // Set process group in parent too
+                setpgid(pid, pid);
+                
+                // Add to job list for potential Ctrl-Z handling
+                addJob(pid, cmd->command);
+                
+                // Make this the foreground process group
+                setForegroundPgid(pid);
+                
                 int status;
-                if (waitpid(pid, &status, 0) == -1) {
-                    perror("waitpid");
+                // Check exit flag periodically while waiting
+                while (1) {
+                    if (should_exit_on_eof) {
+                        // EOF detected - print logout and kill child
+                        printf("logout\n");
+                        kill(pid, SIGKILL);
+                        _exit(0);
+                    }
+                    
+                    pid_t result = waitpid(pid, &status, WUNTRACED | WNOHANG);
+                    if (result == -1) {
+                        if (errno == EINTR) continue; // Interrupted by signal, retry
+                        perror("waitpid");
+                        break;
+                    } else if (result == 0) {
+                        // Child still running, sleep briefly and check again
+                        struct timespec ts = {0, 10000000}; // 10ms in nanoseconds
+                        nanosleep(&ts, NULL);
+                        continue;
+                    } else {
+                        // Child status changed
+                        if (WIFSTOPPED(status)) {
+                            // Process was stopped - job is already in list with STOPPED state
+                            // (set by signal handler)
+                        } else {
+                            // Process completed - remove from job list
+                            removeJob(pid);
+                        }
+                        break;
+                    }
                 }
+                
+                // Return terminal control to shell
+                returnTerminalToShell();
             } else {
                 perror("fork");
             }
@@ -272,6 +370,15 @@ void execute_pipeline(Pipeline *pipeline) {
             return;
         }
         if (pids[i] == 0) {
+            // Child: in pipeline, each child should be in same new process group
+            if (i == 0) {
+                setpgid(0, 0);
+            } else {
+                setpgid(0, pids[0]);
+            }
+            // Restore default signal handlers so children get signals
+            signal(SIGINT, SIG_DFL);
+            signal(SIGTSTP, SIG_DFL);
             // Setup pipes
             if (i > 0) {
                 dup2(pipes[i-1][0], STDIN_FILENO);
@@ -293,10 +400,26 @@ void execute_pipeline(Pipeline *pipeline) {
                 exit(0);
             } else {
                 execvp(cmd->command, cmd->args);
-                perror("execvp");
+                fprintf(stderr, "Command not found!\n");
                 exit(127);
             }
+        } else if (pids[i] > 0) {
+            // Parent: set process group for pipeline children
+            if (i == 0) {
+                setpgid(pids[i], pids[i]); // First child becomes group leader
+            } else {
+                setpgid(pids[i], pids[0]); // Others join first child's group
+            }
         }
+    }
+    
+    // For foreground pipeline, set up job control
+    if (pipeline->command_count > 1 && pids[0] > 0) {
+        // Add pipeline leader to job list and make it foreground
+        char pipeline_cmd[1024];
+        snprintf(pipeline_cmd, sizeof(pipeline_cmd), "%s", pipeline->commands[0].command);
+        addJob(pids[0], pipeline_cmd);
+        setForegroundPgid(pids[0]);
     }
     
     // Close all pipe fds in parent
@@ -309,10 +432,45 @@ void execute_pipeline(Pipeline *pipeline) {
     for (int i = 0; i < pipeline->command_count; i++) {
         if (pids[i] > 0) {
             int status;
-            if (waitpid(pids[i], &status, 0) == -1) {
-                perror("waitpid");
+            // Check exit flag periodically while waiting for each child
+            while (1) {
+                if (should_exit_on_eof) {
+                    // EOF detected - print logout and kill children
+                    printf("logout\n");
+                    for (int j = 0; j < pipeline->command_count; j++) {
+                        if (pids[j] > 0) kill(pids[j], SIGKILL);
+                    }
+                    _exit(0);
+                }
+                
+                pid_t result = waitpid(pids[i], &status, WUNTRACED | WNOHANG);
+                if (result == -1) {
+                    if (errno == EINTR) continue; // Interrupted by signal, retry
+                    perror("waitpid");
+                    break;
+                } else if (result == 0) {
+                    // Child still running, sleep briefly and check again
+                    struct timespec ts = {0, 10000000}; // 10ms in nanoseconds
+                    nanosleep(&ts, NULL);
+                    continue;
+                } else {
+                    // Child status changed
+                    if (WIFSTOPPED(status) && i == 0) {
+                        // First process stopped - pipeline is stopped
+                        // Job state already updated by signal handler
+                    } else if (i == 0) {
+                        // First process completed - remove from jobs
+                        removeJob(pids[i]);
+                    }
+                    break;
+                }
             }
         }
+    }
+    
+    // Return terminal control to shell if this was a foreground pipeline
+    if (pipeline->command_count > 1) {
+        returnTerminalToShell();
     }
 }
 
@@ -345,12 +503,12 @@ void execute_pipeline_background(Pipeline *pipeline, char *original_command) {
                 exit(0);
             } else {
                 execvp(cmd->command, cmd->args);
-                perror("execvp");
+                fprintf(stderr, "Command not found!\n");
                 exit(127);
             }
         } else if (pid > 0) {
             // Parent process - add to job list
-            addJob(pid, original_command);
+            addBackgroundJob(pid, original_command);
         } else {
             perror("fork");
         }
@@ -376,7 +534,7 @@ void execute_pipeline_background(Pipeline *pipeline, char *original_command) {
             exit(0);
         } else if (main_pid > 0) {
             // Parent process - add to job list
-            addJob(main_pid, original_command);
+            addBackgroundJob(main_pid, original_command);
         } else {
             perror("fork");
         }

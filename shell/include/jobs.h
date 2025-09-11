@@ -24,6 +24,7 @@ typedef struct {
 // Basic job management
 void initJobs(void);
 int addJob(pid_t pid, char *command);
+int addBackgroundJob(pid_t pid, char *command);
 void removeJob(pid_t pid);
 void checkBackgroundJobs(void);
 void printJobStatus(pid_t pid, int status);
@@ -34,7 +35,14 @@ Job* findJob(int job_id);
 Job* findJobByPid(pid_t pid);
 int getLastJobId(void);
 
+// Helper function to extract command name
+char* extractCommandName(const char *full_command);
+
 // E.1: activities command
 void doActivities(void);
+
+// E.4: fg and bg commands
+void doFg(int argc, char **argv);
+void doBg(int argc, char **argv);
 
 #endif

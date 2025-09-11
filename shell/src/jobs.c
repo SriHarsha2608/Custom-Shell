@@ -9,13 +9,14 @@
 #include <sys/types.h>
 #include <errno.h>
 #include "jobs.h"
+#include "signals.h"
 
 // Job management
 static Job jobs[MAX_JOBS];
 static int next_job_id = 1;
 
 // Helper function to extract command name
-static char* extractCommandName(const char *full_command) {
+char* extractCommandName(const char *full_command) {
     static char cmd_name[256];
     int i = 0, j = 0;
     
@@ -55,12 +56,20 @@ int addJob(pid_t pid, char *command) {
             strncpy(jobs[i].command, command, sizeof(jobs[i].command) - 1);
             jobs[i].command[sizeof(jobs[i].command) - 1] = '\0';
             
-            printf("[%d] %d\n", jobs[i].job_id, pid);
-            fflush(stdout);
             return jobs[i].job_id;
         }
     }
     return -1; // No space for new job
+}
+
+// Add job for background processes (prints job info)
+int addBackgroundJob(pid_t pid, char *command) {
+    int job_id = addJob(pid, command);
+    if (job_id != -1) {
+        printf("[%d] %d\n", job_id, pid);
+        fflush(stdout);
+    }
+    return job_id;
 }
 
 void removeJob(pid_t pid) {
@@ -138,6 +147,115 @@ void checkBackgroundJobs(void) {
         printJobStatus(pid, status);
         removeJob(pid);
     }
+}
+
+// E.4: fg command - bring job to foreground
+void doFg(int argc, char **argv) {
+    Job *job = NULL;
+
+    if (argc == 1) {
+        int last_id = getLastJobId();
+        if (last_id == -1) {
+            printf("No such job\n");
+            return;
+        }
+        job = findJob(last_id);
+    } else if (argc == 2) {
+        char *endptr;
+        long job_id_long = strtol(argv[1], &endptr, 10);
+        if (*endptr != '\0' || job_id_long <= 0) {
+            printf("No such job\n");
+            return;
+        }
+        job = findJob((int)job_id_long);
+    } else {
+        printf("No such job\n");
+        return;
+    }
+
+    if (!job) {
+        printf("No such job\n");
+        return;
+    }
+
+    // Print the entire command when bringing to foreground
+    printf("%s\n", job->command);
+
+    // If stopped, resume
+    if (job->state == JOB_STOPPED) {
+        kill(-job->pgid, SIGCONT);
+    }
+
+    // Set as foreground pgid so SIGINT/SIGTSTP are forwarded
+    setForegroundPgid(job->pgid);
+
+    // Mark as running
+    job->state = JOB_RUNNING;
+
+    // Wait for job to complete or stop again
+    int status;
+    pid_t res = waitpid(job->pid, &status, WUNTRACED);
+    if (res > 0) {
+        if (WIFSTOPPED(status)) {
+            job->state = JOB_STOPPED;
+        } else {
+            // Completed
+            removeJob(job->pid);
+        }
+    }
+
+    // Return terminal notionally to shell (we never transferred it)
+    returnTerminalToShell();
+}
+
+// E.4: bg command - resume a stopped job in background
+void doBg(int argc, char **argv) {
+    Job *job = NULL;
+
+    if (argc == 1) {
+        int last_id = getLastJobId();
+        if (last_id == -1) {
+            printf("No such job\n");
+            return;
+        }
+        job = findJob(last_id);
+    } else if (argc == 2) {
+        char *endptr;
+        long job_id_long = strtol(argv[1], &endptr, 10);
+        if (*endptr != '\0' || job_id_long <= 0) {
+            printf("No such job\n");
+            return;
+        }
+        job = findJob((int)job_id_long);
+    } else {
+        printf("No such job\n");
+        return;
+    }
+
+    if (!job) {
+        printf("No such job\n");
+        return;
+    }
+
+    if (job->state == JOB_RUNNING) {
+        printf("Job already running\n");
+        return;
+    }
+
+    // Only stopped jobs can be resumed with bg
+    if (job->state != JOB_STOPPED) {
+        printf("Job already running\n");
+        return;
+    }
+
+    // Resume in background
+    if (kill(-job->pgid, SIGCONT) == -1) {
+        printf("No such job\n");
+        return;
+    }
+
+    job->state = JOB_RUNNING;
+    printf("[%d] %s &\n", job->job_id, extractCommandName(job->command));
 }
 
 // Compare function for qsort - sorts jobs by command name

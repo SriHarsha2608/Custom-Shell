@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
 #include <limits.h>
 #include "prompt.h"
 #include "input.h"
@@ -14,6 +15,7 @@
 #include "executor.h"
 #include "log.h"
 #include "jobs.h"
+#include "signals.h"
 
 char shell_home[PATH_MAX];
 
@@ -26,6 +28,9 @@ int main() {
     initHop();
     initLog();
     initJobs();
+    
+    // E.3: Setup signal handlers for job control
+    setupSignalHandlers();
     
     
     
@@ -40,8 +45,9 @@ int main() {
         // Check for completed background processes after user input, before parsing
         checkBackgroundJobs();
         
-        // Handle EOF (Ctrl-D)
+        // E.3: Handle EOF (Ctrl-D)
         if (len == 0) {
+            printf("logout\n");
             cleanupLog();
             exit(0);
         }
