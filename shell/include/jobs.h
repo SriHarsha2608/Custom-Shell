@@ -38,10 +38,8 @@ int getLastJobId(void);
 // Helper function to extract command name
 char* extractCommandName(const char *full_command);
 
-// E.1: activities command
 void doActivities(void);
 
-// E.4: fg and bg commands
 void doFg(int argc, char **argv);
 void doBg(int argc, char **argv);
 

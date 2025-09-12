@@ -3,7 +3,8 @@
 
 #include "tokenizer.h"
 
-typedef struct {
+typedef struct
+{
 	char *command;
 	char **args;
 	int argc;
@@ -16,7 +17,8 @@ typedef struct {
 	char *redir_path[16];
 } Command;
 
-typedef struct {
+typedef struct
+{
 	Command *commands;
 	int command_count;
 } Pipeline;

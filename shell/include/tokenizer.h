@@ -1,7 +1,8 @@
 #ifndef TOKENIZER_H
 #define TOKENIZER_H
 
-typedef enum {
+typedef enum
+{
     T_NAME,
     T_PIPE,
     T_AND,
@@ -12,7 +13,8 @@ typedef enum {
     T_END
 } tokenType;
 
-typedef struct {
+typedef struct
+{
     tokenType type;
     char value[256];
 } token;
