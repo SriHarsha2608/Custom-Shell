@@ -103,13 +103,13 @@ void cleanupLog(void) {
 
 void doLog(int argc, char **argv) {
     if (argc == 1) {
-        // No arguments - print all commands (newest to oldest)
+        // No arguments - print all commands (oldest to newest)
         if (log_count == 0) {
             return; // No output if no commands
         }
         
-        // Print from most recent to oldest
-        for (int i = log_count - 1; i >= 0; i--) {
+        // Print from oldest to newest
+        for (int i = 0; i < log_count; i++) {
             printf("%s\n", log_entries[i]);
         }
     } else if (argc == 2 && strcmp(argv[1], "purge") == 0) {

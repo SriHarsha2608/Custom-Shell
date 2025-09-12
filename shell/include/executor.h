@@ -4,17 +4,21 @@
 #include "tokenizer.h"
 
 typedef struct {
-    char *command;
-    char **args;
-    int argc;
-    char *input_file;
-    char *output_file;
-    int append_output;
+	char *command;
+	char **args;
+	int argc;
+	char *input_file;
+	char *output_file;
+	int append_output;
+	int redir_count;
+	int redir_is_input[16];
+	int redir_is_append[16];
+	char *redir_path[16];
 } Command;
 
 typedef struct {
-    Command *commands;
-    int command_count;
+	Command *commands;
+	int command_count;
 } Pipeline;
 
 void execute_command_group(token *tokens, int count);

@@ -88,6 +88,7 @@ Pipeline parse_pipeline(token *tokens, int count) {
         cmd->input_file = NULL;
         cmd->output_file = NULL;
         cmd->append_output = 0;
+        cmd->redir_count = 0;
         
         // Parse command and arguments
         int arg_capacity = 16;
@@ -128,6 +129,12 @@ Pipeline parse_pipeline(token *tokens, int count) {
                 if (i < count && tokens[i].type == T_NAME) {
                     if (cmd->input_file) free(cmd->input_file);
                     cmd->input_file = strdup(tokens[i].value);
+                    if (cmd->redir_count < 16) {
+                        cmd->redir_is_input[cmd->redir_count] = 1;
+                        cmd->redir_is_append[cmd->redir_count] = 0;
+                        cmd->redir_path[cmd->redir_count] = strdup(tokens[i].value);
+                        cmd->redir_count++;
+                    }
                     i++;
                 }
             } else if (tokens[i].type == T_OUTPUT) {
@@ -136,6 +143,12 @@ Pipeline parse_pipeline(token *tokens, int count) {
                     if (cmd->output_file) free(cmd->output_file);
                     cmd->output_file = strdup(tokens[i].value);
                     cmd->append_output = 0;
+                    if (cmd->redir_count < 16) {
+                        cmd->redir_is_input[cmd->redir_count] = 0;
+                        cmd->redir_is_append[cmd->redir_count] = 0;
+                        cmd->redir_path[cmd->redir_count] = strdup(tokens[i].value);
+                        cmd->redir_count++;
+                    }
                     i++;
                 }
             } else if (tokens[i].type == T_APPEND) {
@@ -144,6 +157,12 @@ Pipeline parse_pipeline(token *tokens, int count) {
                     if (cmd->output_file) free(cmd->output_file);
                     cmd->output_file = strdup(tokens[i].value);
                     cmd->append_output = 1;
+                    if (cmd->redir_count < 16) {
+                        cmd->redir_is_input[cmd->redir_count] = 0;
+                        cmd->redir_is_append[cmd->redir_count] = 1;
+                        cmd->redir_path[cmd->redir_count] = strdup(tokens[i].value);
+                        cmd->redir_count++;
+                    }
                     i++;
                 }
             } else {
@@ -165,38 +184,55 @@ Pipeline parse_pipeline(token *tokens, int count) {
     return pipeline;
 }
 
-void setup_redirection(Command *cmd) {
-    if (cmd->input_file) {
-        int fd = open(cmd->input_file, O_RDONLY);
-        if (fd == -1) {
-            fprintf(stderr, "No such file or directory!\n");
-            exit(1);
-        }
-        if (dup2(fd, STDIN_FILENO) == -1) {
-            perror("dup2");
-            close(fd);
-            exit(1);
-        }
-        close(fd);
+static int try_open_input(const char *path) {
+    int fd = open(path, O_RDONLY);
+    if (fd == -1) {
+        fprintf(stderr, "No such file or directory!\n");
+        return -1;
     }
-    
-    if (cmd->output_file) {
-        int fd;
-        if (cmd->append_output) {
-            fd = open(cmd->output_file, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-        } else {
-            fd = open(cmd->output_file, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-        }
-        if (fd == -1) {
-            fprintf(stderr, "Unable to create file for writing\n");
-            exit(1);
-        }
-        if (dup2(fd, STDOUT_FILENO) == -1) {
-            perror("dup2");
+    return fd;
+}
+
+static int try_open_output(const char *path, int append) {
+    int fd;
+    if (append) {
+        fd = open(path, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    } else {
+        fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    }
+    if (fd == -1) {
+        fprintf(stderr, "Unable to create file for writing\n");
+        return -1;
+    }
+    return fd;
+}
+
+void setup_redirection(Command *cmd) {
+    // Apply redirections in the order they appeared
+    for (int r = 0; r < cmd->redir_count; r++) {
+        if (cmd->redir_is_input[r]) {
+            int fd = try_open_input(cmd->redir_path[r]);
+            if (fd == -1) {
+                exit(1);
+            }
+            if (dup2(fd, STDIN_FILENO) == -1) {
+                perror("dup2");
+                close(fd);
+                exit(1);
+            }
             close(fd);
-            exit(1);
+        } else {
+            int fd = try_open_output(cmd->redir_path[r], cmd->redir_is_append[r]);
+            if (fd == -1) {
+                exit(1);
+            }
+            if (dup2(fd, STDOUT_FILENO) == -1) {
+                perror("dup2");
+                close(fd);
+                exit(1);
+            }
+            close(fd);
         }
-        close(fd);
     }
 }
 
@@ -225,46 +261,38 @@ void execute_pipeline(Pipeline *pipeline) {
                 }
                 
                 // Handle input redirection
-                if (cmd->input_file) {
-                    int fd = open(cmd->input_file, O_RDONLY);
-                    if (fd == -1) {
-                        fprintf(stderr, "No such file or directory!\n");
-                        if (saved_stdin != -1) close(saved_stdin);
-                        if (saved_stdout != -1) close(saved_stdout);
-                        return;
-                    }
-                    if (dup2(fd, STDIN_FILENO) == -1) {
-                        perror("dup2");
+                for (int r = 0; r < cmd->redir_count; r++) {
+                    if (cmd->redir_is_input[r]) {
+                        int fd = try_open_input(cmd->redir_path[r]);
+                        if (fd == -1) {
+                            if (saved_stdin != -1) close(saved_stdin);
+                            if (saved_stdout != -1) close(saved_stdout);
+                            return;
+                        }
+                        if (dup2(fd, STDIN_FILENO) == -1) {
+                            perror("dup2");
+                            close(fd);
+                            if (saved_stdin != -1) close(saved_stdin);
+                            if (saved_stdout != -1) close(saved_stdout);
+                            return;
+                        }
                         close(fd);
-                        if (saved_stdin != -1) close(saved_stdin);
-                        if (saved_stdout != -1) close(saved_stdout);
-                        return;
-                    }
-                    close(fd);
-                }
-                
-                // Handle output redirection
-                if (cmd->output_file) {
-                    int fd;
-                    if (cmd->append_output) {
-                        fd = open(cmd->output_file, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
                     } else {
-                        fd = open(cmd->output_file, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-                    }
-                    if (fd == -1) {
-                        fprintf(stderr, "Unable to create file for writing\n");
-                        if (saved_stdin != -1) close(saved_stdin);
-                        if (saved_stdout != -1) close(saved_stdout);
-                        return;
-                    }
-                    if (dup2(fd, STDOUT_FILENO) == -1) {
-                        perror("dup2");
+                        int fd = try_open_output(cmd->redir_path[r], cmd->redir_is_append[r]);
+                        if (fd == -1) {
+                            if (saved_stdin != -1) close(saved_stdin);
+                            if (saved_stdout != -1) close(saved_stdout);
+                            return;
+                        }
+                        if (dup2(fd, STDOUT_FILENO) == -1) {
+                            perror("dup2");
+                            close(fd);
+                            if (saved_stdin != -1) close(saved_stdin);
+                            if (saved_stdout != -1) close(saved_stdout);
+                            return;
+                        }
                         close(fd);
-                        if (saved_stdin != -1) close(saved_stdin);
-                        if (saved_stdout != -1) close(saved_stdout);
-                        return;
                     }
-                    close(fd);
                 }
             }
             
@@ -559,6 +587,9 @@ void free_pipeline(Pipeline *pipeline) {
         if (cmd->command) free(cmd->command);
         if (cmd->input_file) free(cmd->input_file);
         if (cmd->output_file) free(cmd->output_file);
+        for (int r = 0; r < cmd->redir_count; r++) {
+            if (cmd->redir_path[r]) free(cmd->redir_path[r]);
+        }
         if (cmd->args) {
             for (int j = 0; j < cmd->argc; j++) {
                 if (cmd->args[j]) free(cmd->args[j]);

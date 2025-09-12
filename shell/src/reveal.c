@@ -171,7 +171,8 @@ void doReveal(int argc, char **argv)
             continue;
         }
 
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+        // Only skip "." and ".." when not showing all
+        if (!showAll && (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0))
         {
             continue;
         }

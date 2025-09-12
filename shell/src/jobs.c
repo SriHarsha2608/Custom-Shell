@@ -125,8 +125,8 @@ int getLastJobId(void) {
 void printJobStatus(pid_t pid, int status) {
     for (int i = 0; i < MAX_JOBS; i++) {
         if (jobs[i].active && jobs[i].pid == pid) {
+            // Print the full original command (as typed)
             char *cmd_name = extractCommandName(jobs[i].command);
-            
             if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
                 printf("%s with pid %d exited normally\n", cmd_name, pid);
             } else {

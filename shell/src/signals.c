@@ -8,6 +8,7 @@
 #include <termios.h>
 #include "signals.h"
 #include "jobs.h"
+#include "prompt.h"
 
 // Global variable to track current foreground process group
 pid_t current_fg_pgid = 0;
@@ -67,6 +68,9 @@ void sigtstp_handler(int sig) {
         // Return terminal control to shell and clear foreground process group
         returnTerminalToShell();
         current_fg_pgid = 0;
+
+        // Immediately show a fresh prompt
+        display_prompt();
     }
 }
 
