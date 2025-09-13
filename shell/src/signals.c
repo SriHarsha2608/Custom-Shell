@@ -17,54 +17,62 @@ pid_t current_fg_pgid = 0;
 volatile sig_atomic_t should_exit_on_eof = 0;
 
 // E.3: Ctrl-C handler (SIGINT)
-void sigint_handler(int sig) {
+void sigint_handler(int sig)
+{
     (void)sig; // Suppress unused parameter warning
-    
+
     // If EOF was detected, exit immediately
-    if (should_exit_on_eof) {
+    if (should_exit_on_eof)
+    {
         write(STDOUT_FILENO, "logout\n", 7);
         _exit(0);
     }
-    
+
     // If there's a foreground job, send SIGINT to its process group
-    if (current_fg_pgid > 0 && current_fg_pgid != getpgrp()) {
+    if (current_fg_pgid > 0 && current_fg_pgid != getpgrp())
+    {
         kill(-current_fg_pgid, SIGINT);
     }
-    
+
     // Print newline to move to next line after ^C
     write(STDOUT_FILENO, "\n", 1);
 }
 
-// E.3: Ctrl-Z handler (SIGTSTP) 
-void sigtstp_handler(int sig) {
+// E.3: Ctrl-Z handler (SIGTSTP)
+void sigtstp_handler(int sig)
+{
     (void)sig; // Suppress unused parameter warning
-    
+
     // If EOF was detected, exit immediately
-    if (should_exit_on_eof) {
+    if (should_exit_on_eof)
+    {
         write(STDOUT_FILENO, "logout\n", 7);
         _exit(0);
     }
-    
+
     // If there's a foreground job, send SIGTSTP to its process group
-    if (current_fg_pgid > 0 && current_fg_pgid != getpgrp()) {
+    if (current_fg_pgid > 0 && current_fg_pgid != getpgrp())
+    {
         kill(-current_fg_pgid, SIGTSTP);
-        
+
         // Find the job and mark it as stopped
         Job *job = findJobByPid(current_fg_pgid);
-        if (job) {
+        if (job)
+        {
             job->state = JOB_STOPPED;
-            
+
             // Extract command name (first word)
             char *cmd_name = extractCommandName(job->command);
-            
+
             // Print stopped message
             char msg[512];
             int n = snprintf(msg, sizeof(msg), "\n[%d] Stopped %s\n", job->job_id, cmd_name);
-            if (n > 0) {
+            if (n > 0)
+            {
                 write(STDOUT_FILENO, msg, (size_t)n);
             }
         }
-        
+
         // Return terminal control to shell and clear foreground process group
         returnTerminalToShell();
         current_fg_pgid = 0;
@@ -75,88 +83,71 @@ void sigtstp_handler(int sig) {
 }
 
 // Install signal handlers for job control
-void setupSignalHandlers(void) {
-    // Put the shell in its own process group (non-fatal)
-    if (setpgid(0, 0) == -1) {
-        // perror("setpgid"); // Comment out to make non-fatal
-        // exit(EXIT_FAILURE); // Don't exit on failure
-    }
-    
-    // Take control of the terminal (non-fatal)
-    if (tcsetpgrp(STDIN_FILENO, getpgrp()) == -1) {
-        // perror("tcsetpgrp"); // Comment out to make non-fatal
-        // exit(EXIT_FAILURE); // Don't exit on failure
-    }
-    
-    // Configure terminal to make Ctrl+D generate SIGQUIT only when shell is at prompt
-    // For now, let's keep normal EOF behavior and handle it in the main input loop
-    // struct termios term;
-    // if (tcgetattr(STDIN_FILENO, &term) == 0) {
-    //     term.c_cc[VEOF] = 0; // Disable normal EOF behavior
-    //     term.c_cc[VQUIT] = 4; // Make Ctrl+D generate SIGQUIT (ASCII 4)
-    //     tcsetattr(STDIN_FILENO, TCSANOW, &term);
-    // }
-    
+void setupSignalHandlers(void)
+{
     struct sigaction sa;
-    
+
     // Install SIGINT handler (Ctrl-C)
     sa.sa_handler = sigint_handler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART;
-    if (sigaction(SIGINT, &sa, NULL) == -1) {
+    if (sigaction(SIGINT, &sa, NULL) == -1)
+    {
         perror("sigaction SIGINT");
         exit(EXIT_FAILURE);
     }
-    
+
     // Install SIGTSTP handler (Ctrl-Z)
     sa.sa_handler = sigtstp_handler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART;
-    if (sigaction(SIGTSTP, &sa, NULL) == -1) {
+    if (sigaction(SIGTSTP, &sa, NULL) == -1)
+    {
         perror("sigaction SIGTSTP");
         exit(EXIT_FAILURE);
     }
-    
+
     // Install SIGQUIT handler for Ctrl+D immediate exit
     sa.sa_handler = sigquit_handler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = 0; // No SA_RESTART for immediate response
-    if (sigaction(SIGQUIT, &sa, NULL) == -1) {
+    if (sigaction(SIGQUIT, &sa, NULL) == -1)
+    {
         perror("sigaction SIGQUIT");
         exit(EXIT_FAILURE);
     }
-    
+
     // Ignore SIGTTOU so we can call tcsetpgrp
     signal(SIGTTOU, SIG_IGN);
 }
 
 // Set foreground process group
-void setForegroundPgid(pid_t pgid) {
+void setForegroundPgid(pid_t pgid)
+{
     current_fg_pgid = pgid;
-    // DON'T transfer terminal control - let shell handle signals
-    // if (pgid > 0) {
-    //     tcsetpgrp(STDIN_FILENO, pgid);
-    // }
 }
 
 // SIGQUIT handler for Ctrl+D immediate exit
-void sigquit_handler(int sig) {
+void sigquit_handler(int sig)
+{
     (void)sig; // Suppress unused parameter warning
-    
+
     // If there's a foreground process running, send EOF to it, don't exit shell
-    if (current_fg_pgid > 0 && current_fg_pgid != getpgrp()) {
+    if (current_fg_pgid > 0 && current_fg_pgid != getpgrp())
+    {
         // Send SIGTERM to foreground process to simulate EOF
         kill(-current_fg_pgid, SIGTERM);
         return; // Don't exit the shell, let the process handle EOF
     }
-    
+
     // Only exit shell if no foreground process is running (i.e., at shell prompt)
     write(STDOUT_FILENO, "logout\n", 7);
     _exit(0);
 }
 
 // Return terminal control to shell
-void returnTerminalToShell(void) {
+void returnTerminalToShell(void)
+{
     current_fg_pgid = 0;
     // No need to call tcsetpgrp since we never gave control away
 }

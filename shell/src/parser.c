@@ -18,7 +18,6 @@ void advance()
     {
         pos++;
     }
-    
 }
 
 int parse_atomic();
@@ -56,7 +55,7 @@ int parse_shell_cmd()
     {
         advance();
     }
-    
+
     return 1;
 }
 
@@ -101,8 +100,7 @@ int parse_atomic()
             }
             advance();
         }
-        
     }
-    
+
     return 1;
 }

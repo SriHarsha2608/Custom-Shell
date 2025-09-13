@@ -45,7 +45,7 @@ void tokenize(char *input, token *tokens, int *count)
         }
         else if (input[i] == '>')
         {
-            if (input[i+1] == '>')
+            if (input[i + 1] == '>')
             {
                 tokens[t].type = T_APPEND;
                 strcpy(tokens[t].value, ">>");
@@ -70,9 +70,9 @@ void tokenize(char *input, token *tokens, int *count)
             tokens[t].value[j] = '\0';
             tokens[t].type = T_NAME;
             t++;
-        }    
+        }
     }
     tokens[t].type = T_END;
     tokens[t].value[0] = '\0';
-    *count = t; 
+    *count = t;
 }

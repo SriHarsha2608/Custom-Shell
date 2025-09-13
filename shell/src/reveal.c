@@ -9,7 +9,7 @@
 #include <limits.h>
 #include <errno.h>
 #include "reveal.h"
-#include "hop.h"  // Add this include
+#include "hop.h"
 
 int compareStrings(const void *a, const void *b)
 {
@@ -91,7 +91,7 @@ void doReveal(int argc, char **argv)
 
             if (strcmp(argv[argIndex], "~") == 0)
             {
-                strcpy(targetDir, shell_home);  // Changed from shellHome
+                strcpy(targetDir, shell_home); // Changed from shellHome
             }
             else if (strcmp(argv[argIndex], ".") == 0)
             {
@@ -99,7 +99,7 @@ void doReveal(int argc, char **argv)
             }
             else if (strcmp(argv[argIndex], "..") == 0)
             {
-                if (strcmp(currentDir, shell_home) == 0)  // Changed from shellHome
+                if (strcmp(currentDir, shell_home) == 0) // Changed from shellHome
                 {
                     strcpy(targetDir, currentDir);
                 }

@@ -12,7 +12,8 @@ int prevValid = 0;
 
 void initHop()
 {
-    if (getcwd(shell_home, sizeof(shell_home)) == NULL) {  // Changed from shellHome
+    if (getcwd(shell_home, sizeof(shell_home)) == NULL)
+    { // Changed from shellHome
         perror("getcwd");
         exit(EXIT_FAILURE);
     }
@@ -24,11 +25,12 @@ void doHop(int argc, char **argv)
     char cwd[PATH_MAX];
     if (argc == 1)
     {
-        if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        if (getcwd(cwd, sizeof(cwd)) == NULL)
+        {
             perror("getcwd");
             return;
         }
-        if (chdir(shell_home) == 0)  // Changed from shellHome
+        if (chdir(shell_home) == 0) // Changed from shellHome
         {
             strncpy(prevDir, cwd, sizeof(prevDir) - 1);
             prevDir[sizeof(prevDir) - 1] = '\0';
@@ -36,18 +38,19 @@ void doHop(int argc, char **argv)
         }
         return;
     }
-    
+
     for (int i = 1; i < argc; i++)
     {
         char *arg = argv[i];
 
         if (strcmp(arg, "~") == 0)
         {
-            if (getcwd(cwd, sizeof(cwd)) == NULL) {
+            if (getcwd(cwd, sizeof(cwd)) == NULL)
+            {
                 perror("getcwd");
                 continue;
             }
-            if (chdir(shell_home) == 0)  // Changed from shellHome
+            if (chdir(shell_home) == 0) // Changed from shellHome
             {
                 strncpy(prevDir, cwd, sizeof(prevDir) - 1);
                 prevDir[sizeof(prevDir) - 1] = '\0';
@@ -58,31 +61,32 @@ void doHop(int argc, char **argv)
         {
             continue;
         }
-        
+
         else if (strcmp(arg, "..") == 0)
         {
-            if (getcwd(cwd, sizeof(cwd)) == NULL) {
+            if (getcwd(cwd, sizeof(cwd)) == NULL)
+            {
                 perror("getcwd");
                 continue;
             }
-            if (strcmp(cwd, shell_home) == 0)  // Changed from shellHome
+            if (strcmp(cwd, shell_home) == 0) // Changed from shellHome
             {
                 continue;
             }
-            
+
             if (chdir("..") == 0)
             {
                 strncpy(prevDir, cwd, sizeof(prevDir) - 1);
                 prevDir[sizeof(prevDir) - 1] = '\0';
                 prevValid = 1;
             }
-            
         }
         else if (strcmp(arg, "-") == 0)
         {
             if (prevValid)
             {
-                if (getcwd(cwd, sizeof(cwd)) == NULL) {
+                if (getcwd(cwd, sizeof(cwd)) == NULL)
+                {
                     perror("getcwd");
                     continue;
                 }
@@ -95,11 +99,11 @@ void doHop(int argc, char **argv)
                     prevDir[sizeof(prevDir) - 1] = '\0';
                 }
             }
-            
         }
         else
         {
-            if (getcwd(cwd, sizeof(cwd)) == NULL) {
+            if (getcwd(cwd, sizeof(cwd)) == NULL)
+            {
                 perror("getcwd");
                 continue;
             }

@@ -12,31 +12,41 @@
 
 extern volatile sig_atomic_t child_exited;
 
-ssize_t userInput(char *buffer, int size) {
-    while (1) {
+ssize_t userInput(char *buffer, int size)
+{
+    while (1)
+    {
         ssize_t len = read(STDIN_FILENO, buffer, size - 1);
-        
-        if (len > 0) {
+
+        if (len > 0)
+        {
             // Null terminate
             buffer[len] = '\0';
-            
+
             // Remove trailing newline and whitespace
-            while (len > 0 && (buffer[len-1] == '\n' || buffer[len-1] == '\r' || 
-                              buffer[len-1] == ' ' || buffer[len-1] == '\t')) {
+            while (len > 0 && (buffer[len - 1] == '\n' || buffer[len - 1] == '\r' ||
+                               buffer[len - 1] == ' ' || buffer[len - 1] == '\t'))
+            {
                 buffer[--len] = '\0';
             }
-            
+
             return len;
-        } else if (len == 0) {
+        }
+        else if (len == 0)
+        {
             // EOF detected - set flag to indicate immediate exit needed
             should_exit_on_eof = 1;
             buffer[0] = '\0';
             return len;
-        } else if (errno == EINTR) {
+        }
+        else if (errno == EINTR)
+        {
             // System call was interrupted by signal (SIGCHLD)
             // Just continue reading - job checking will happen in main loop
             continue;
-        } else {
+        }
+        else
+        {
             // Other error
             perror("read");
             buffer[0] = '\0';
