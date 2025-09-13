@@ -16,7 +16,7 @@ pid_t current_fg_pgid = 0;
 // Global flag to indicate shell should exit immediately on EOF
 volatile sig_atomic_t should_exit_on_eof = 0;
 
-// E.3: Ctrl-C handler (SIGINT)
+// ############## LLM Generated Code Begins ##############
 void sigint_handler(int sig)
 {
     (void)sig; // Suppress unused parameter warning
@@ -151,3 +151,4 @@ void returnTerminalToShell(void)
     current_fg_pgid = 0;
     // No need to call tcsetpgrp since we never gave control away
 }
+// ############## LLM Generated Code Ends ##############

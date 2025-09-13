@@ -22,7 +22,5 @@ void sigquit_handler(int sig);
 void setupSignalHandlers(void);
 void setForegroundPgid(pid_t pgid);
 void returnTerminalToShell(void);
-// void triggerEofExit(void);
-// void cleanupSignals(void);
 
 #endif

@@ -7,7 +7,7 @@
 #include <errno.h>
 #include "ping.h"
 
-// E.2: ping command implementation
+// // ############## LLM Generated Code Starts ################
 void doPing(int argc, char **argv)
 {
     if (argc != 3)
@@ -46,4 +46,5 @@ void doPing(int argc, char **argv)
     {
         printf("Sent signal %ld to process with pid %ld\n", signal_long, pid_long);
     }
+    // ############## LLM Generated Code Ends ################
 }

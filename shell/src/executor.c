@@ -1,5 +1,7 @@
+// ############## LLM Generated Code Begins ##############
 #define _POSIX_C_SOURCE 200809L
 #define _XOPEN_SOURCE 700
+// ############## LLM Generated Code Ends ################
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,6 +66,7 @@ void execute_builtin(char *command, char **args, int argc)
     }
 }
 
+// ############## LLM Generated Code Begins ##############
 Pipeline parse_pipeline(token *tokens, int count)
 {
     Pipeline pipeline;
@@ -229,7 +232,7 @@ Pipeline parse_pipeline(token *tokens, int count)
 
     return pipeline;
 }
-
+// ############## LLM Generated Code Ends ################
 static int try_open_input(const char *path)
 {
     int fd = open(path, O_RDONLY);
@@ -298,6 +301,7 @@ void setup_redirection(Command *cmd)
     }
 }
 
+// ############## LLM Generated Code Begins ##############
 void execute_pipeline(Pipeline *pipeline)
 {
     if (pipeline->command_count == 0)
@@ -645,6 +649,7 @@ void execute_pipeline(Pipeline *pipeline)
         returnTerminalToShell();
     }
 }
+// ############## LLM Generated Code Ends ################
 
 void execute_pipeline_background(Pipeline *pipeline, char *original_command)
 {

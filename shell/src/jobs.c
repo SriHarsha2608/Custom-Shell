@@ -182,7 +182,7 @@ void checkBackgroundJobs(void)
     }
 }
 
-// E.4: fg command - bring job to foreground
+// ############## LLM Generated Code Starts ################
 void doFg(int argc, char **argv)
 {
     Job *job = NULL;
@@ -328,7 +328,7 @@ static int compareJobsByCommand(const void *a, const void *b)
 
     return strcmp(cmdA, cmdB);
 }
-
+// ############## LLM Generated Code Ends ################
 // E.1: activities command
 void doActivities(void)
 {
